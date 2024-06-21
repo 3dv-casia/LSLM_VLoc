@@ -28,6 +28,26 @@ The following figure shows the pipeline of LSLM_VLoc：
   <img src="https://github.com/3dv-casia/LSLM_VLoc/blob/main/images/pipeline.png" alt="pipeline" width="992" height="390">
 </p>
 
+# Datasets
+We perform experiments on the Cambridge Landmarks dataset and the Aachen Day-Night dataset.
+
+Download the Cambridge Landmarks dataset from the: https://www.repository.cam.ac.uk/items/53788265-cb98-42ee-b85b-7a0cbc8eddb3
+
+```
+export dataset=datasets/cambridge
+export scenes=( "KingsCollege" "OldHospital" "StMarysChurch" "ShopFacade" "GreatCourt" )
+export IDs=( "251342" "251340" "251294" "251336" "251291" )
+for i in "${!scenes[@]}"; do
+wget https://www.repository.cam.ac.uk/bitstream/handle/1810/${IDs[i]}/${scenes[i]}.zip -P $dataset \
+&& unzip $dataset/${scenes[i]}.zip -d $dataset && rm $dataset/${scenes[i]}.zip; done
+```
+
+Download the Aachen Day-Night dataset from the: https://data.ciirc.cvut.cz/public/projects/2020VisualLocalization/Aachen-Day-Night/
+```
+export dataset=datasets/aachen
+wget -r -np -nH -R "index.html*,aachen_v1_1.zip" --cut-dirs=4  https://data.ciirc.cvut.cz/public/projects/2020VisualLocalization/Aachen-Day-Night/ -P $dataset
+unzip $dataset/images/database_and_query_images.zip -d $dataset
+```
 
 # Codes
 We are actively preparing to release the source code.
