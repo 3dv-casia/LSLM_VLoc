@@ -48,11 +48,21 @@ export dataset=datasets/aachen
 wget -r -np -nH -R "index.html*,aachen_v1_1.zip" --cut-dirs=4  https://data.ciirc.cvut.cz/public/projects/2020VisualLocalization/Aachen-Day-Night/ -P $dataset
 unzip $dataset/images/database_and_query_images.zip -d $dataset
 ```
+# Dependencies
+
+* [Opencv](https://opencv.org/)
+* [Ceres](http://ceres-solver.org/)
+* [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page)
+* [Boost](https://www.boost.org/)
+* [Colmap 3.7](https://colmap.github.io/)
+* [Line3D++](https://github.com/manhofer/Line3Dpp)
+* [Limap](https://github.com/cvg/limap)
+* [GlueStick](https://github.com/cvg/GlueStick)
+* [VP-Estimation](https://github.com/cvg/VP-Estimation-with-Prior-Gravity)
 
 # Codes
-We are actively preparing to release the source code.
 
-If you're interested in our project, keep an eye out as the source code will be available very soon.
+It is divided into two parts, mapping and localization, and the source code can be found in the **ConstructLineMap** and **Localization** folder.
 
 # Results
 
@@ -80,3 +90,17 @@ Method | Map Size | Median  Errors (m/°)
 | CROSSFIRE  |  50MB   | 0.43/0.70   |
 | Ours   |  ∼3MB   | 0.34/0.86   |
 
+# Cite
+```
+@ARTICLE{10496153,
+  author={Liu, Hongmin and Cao, Chengyang and Ye, Hanqiao and Cui, Hainan and Gao, Wei and Wang, Xing and Shen, Shuhan},
+  journal={IEEE Robotics and Automation Letters}, 
+  title={Lightweight Structured Line Map Based Visual Localization}, 
+  year={2024},
+  volume={9},
+  number={6},
+  pages={5182-5189},
+  keywords={Location awareness;Three-dimensional displays;Cameras;Visualization;Image segmentation;Point cloud compression;Pose estimation;Visual localization;line segments;lightweight structured line map;pose estimation},
+  doi={10.1109/LRA.2024.3387137}
+}
+```
