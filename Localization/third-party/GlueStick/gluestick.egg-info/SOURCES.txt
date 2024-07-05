@@ -1,0 +1,11 @@
+LICENSE
+README.md
+setup.py
+gluestick/__init__.py
+gluestick/drawing.py
+gluestick/geometry.py
+gluestick/run.py
+gluestick.egg-info/PKG-INFO
+gluestick.egg-info/SOURCES.txt
+gluestick.egg-info/dependency_links.txt
+gluestick.egg-info/top_level.txt
