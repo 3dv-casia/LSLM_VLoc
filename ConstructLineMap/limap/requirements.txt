@@ -1,0 +1,35 @@
+pyyaml
+tqdm
+attrdict
+h5py
+numpy
+scipy
+matplotlib
+seaborn
+brewer2mpl
+tensorboard
+tensorboardX
+opencv-python
+opencv-contrib-python
+scikit-learn
+scikit-image
+shapely
+jupyter
+bresenham
+pyvista
+omegaconf
+rtree
+plyfile
+pathlib
+open3d==0.16.0
+imagesize
+einops
+ninja
+yacs
+python-json-logger
+
+./third-party/pytlsd
+./third-party/hawp
+-e ./third-party/Hierarchical-Localization
+-e ./third-party/DeepLSD
+-e ./third-party/GlueStick

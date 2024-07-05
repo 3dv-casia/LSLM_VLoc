@@ -1,0 +1,415 @@
+#!/usr/bin/env python3
+
+# TODO
+# * nix/spack
+# * integration in new project
+
+import argparse
+from contextlib import contextmanager
+from collections import namedtuple
+import logging
+import os
+import os.path as osp
+import shutil
+import subprocess
+from subprocess import check_output
+import tempfile
+
+import yaml
+
+DEFAULT_REPOS_YAML = "repositories.yaml"
+LOGGER = logging.getLogger("bump")
+CMD_LOGGER = LOGGER.getChild("cmd")
+HPC_CC_HTTP_REMOTE = "https://github.com/BlueBrain/hpc-coding-conventions.git"
+
+IGNORED_CONFIG_FILES = {
+    ".clang-format",
+    ".clang-tidy",
+    ".cmake-format.yaml",
+    ".pre-commit-config.yaml",
+}
+
+
+def git_status():
+    adds = set()
+    changes = set()
+    dels = set()
+    unknowns = set()
+    for change in (
+        check_output(["git", "status", "--short"]).decode("utf-8").splitlines()
+    ):
+        if change.startswith("D  "):
+            dels.add(change[3:])
+        elif change.startswith(" M "):
+            changes.add(change[3:])
+        elif change.startswith("?? "):
+            unknowns.add(change[3:])
+        elif change.startswith("A  "):
+            adds.add(change[3:])
+    return adds, changes, dels, unknowns
+
+
+def _check_call(*args):
+    CMD_LOGGER.info(" ".join(args))
+    return subprocess.check_call(args)
+
+
+def _call(*args):
+    CMD_LOGGER.info(" ".join(args))
+    return subprocess.call(args)
+
+
+@contextmanager
+def pushd(path):
+    old_cwd = os.getcwd()
+    cwd = os.chdir(path)
+    try:
+        yield cwd
+    finally:
+        os.chdir(old_cwd)
+
+
+class Repository(
+    namedtuple("Repository", ["url", "features", "location", "cmake_project_name"])
+):
+    @staticmethod
+    def create(**kwargs):
+        url = kwargs["url"]
+        kwargs.setdefault("location", "hpc-coding-conventions")
+        if "github.com" in url:
+            repo = GitHubRepository(**kwargs)
+        elif "bbpcode.epfl.ch" in url:
+            repo = GerritRepository(**kwargs)
+        repo.log = LOGGER.getChild(repo.name)
+        return repo
+
+    def submit(self):
+        raise NotImplementedError
+
+    @property
+    def name(self):
+        name = self.url.split(":")[-1]
+        name = name.rsplit("/", 2)[-2:]
+        if name[-1].endswith(".git"):
+            name[-1] = name[-1][:-4]
+        return "-".join(name)
+
+    def bump_branch_exists(self, revision):
+        return self._bump_branch(revision) in self.branches
+
+    @property
+    def remote(self):
+        return self.name
+
+    @property
+    def branch(self):
+        return self.name
+
+    @property
+    def remotes(self):
+        return check_output(["git", "remote"]).decode("utf-8").split("\n")
+
+    @property
+    def branches(self):
+        eax = []
+        for br in check_output(["git", "branch"]).decode("utf-8").split("\n"):
+            if br.startswith("*"):
+                br = br[1:]
+            eax.append(br.strip())
+        return eax
+
+    def fetch(self):
+        self.log.info("fetching repository")
+        if self.remote not in self.remotes:
+            _check_call("git", "remote", "add", self.name, self.url)
+        _check_call("git", "fetch", self.name)
+        return True
+
+    @property
+    def default_branch(self):
+        return "master"
+        # ref = check_output(
+        #     ["git", "symbolic-ref", "refs/remotes/{}/HEAD".format(self.remote)]
+        # ).strip()
+        # return ref.rsplit(":", 1)[-1]
+
+    def _bump_branch(self, revision):
+        return self.name + "-" + revision[:8]
+
+    def _upstream_branch(self, revision):
+        return self.remote + "/" + self._bump_branch(revision)
+
+    def checkout_branch(self, revision):
+        branch = self._bump_branch(revision)
+        if branch in self.branches:
+            _check_call("git", "checkout", "-f", "master")
+            _check_call("git", "branch", "-D", branch)
+        self.log.info("checkout branch %s", branch)
+
+        _check_call(
+            "git",
+            "checkout",
+            "-b",
+            branch,
+            "{}/{}".format(self.remote, self.default_branch),
+        )
+        if not osp.exists(self.location):
+            with pushd(osp.dirname(self.location)):
+                _check_call("git", "submodule", "add", "--force", HPC_CC_HTTP_REMOTE)
+        _check_call("git", "submodule", "update", "--recursive", "--init")
+        return True
+
+    def bump(self, revision):
+        self.log.info("Bump submodule")
+        with pushd(self.location):
+            _check_call("git", "fetch")
+            _check_call("git", "checkout", revision)
+        if self.is_dirty:
+            _check_call("git", "add", self.location)
+            _check_call("git", "status")
+            return True
+        else:
+            return False
+
+    def update_gitignore(self):
+        _, changes, _, unknowns = git_status()
+        ignore_additions = []
+        for unknown in unknowns:
+            if unknown in IGNORED_CONFIG_FILES:
+                ignore_additions.append(unknown)
+        for change in changes:
+            if change in IGNORED_CONFIG_FILES:
+                _check_call("git", "rm", "--force", change)
+                ignore_additions.append(unknown)
+            else:
+                _check_call("git", "add", change)
+        ignore_additions.sort()
+        if ignore_additions:
+            with open(".gitignore", "a") as ostr:
+                for ignored in ignore_additions:
+                    print(ignored, file=ostr)
+            _check_call("git", "add", ".gitignore")
+        return True
+
+    def commit(self, revision):
+        _check_call(
+            "git",
+            "commit",
+            "-m",
+            "Bump hpc-coding-conventions submodule to {}".format(revision[:8]),
+        )
+        return True
+
+    @property
+    def is_dirty(self):
+        return (
+            _call("git", "diff", "--quiet") != 0
+            or _call("git", "diff", "--staged", "--quiet") != 0
+        )
+
+    def test(self):
+        self._test_cmake()
+        self._test_formatting_targets()
+        self._test_static_analysis()
+        self._test_precommit()
+        return True
+
+    def _test_cmake(self):
+        if osp.isdir("_build"):
+            shutil.rmtree("_build")
+        os.makedirs("_build")
+        with pushd("_build"):
+            cmd = ["cmake"]
+            var_prefix = "-D" + self.cmake_project_name + "_"
+            for feature, value in self.features.items():
+                if value:
+                    cmd.append(var_prefix + feature.upper() + ":BOOL=ON")
+            cmd.append("..")
+            _check_call(*cmd)
+
+    def _test_formatting_targets(self):
+        with pushd("_build"):
+            if self.features.get("formatting"):
+                _check_call("make", "clang-format")
+                _check_call("make", "cmake-format")
+
+    def _test_static_analysis(self):
+        with pushd("_build"):
+            if self.features.get("static_analysis"):
+                _check_call("make", "clang-tidy")
+
+    def _test_precommit(self):
+        if self.features.get("precommit"):
+            _check_call("pre-commit", "run", "-a")
+
+    def clean_local_branches(self):
+        _check_call("git", "checkout", "-f", "master")
+        _check_call("git", "clean", "-ffdx")
+        for branch in self.branches:
+            if branch.startswith(self.remote):
+                _check_call("git", "branch", "-D", branch)
+
+
+class GitHubRepository(Repository):
+    def submit(self, revision):
+        _check_call("git", "push", self.remote, "HEAD")
+        _check_call(
+            "hub",
+            "pull-request",
+            "-m",
+            "Bump hpc-coding-conventions submodule to {}".format(revision[:8]),
+        )
+        return True
+
+
+class GerritRepository(Repository):
+    def submit(self, revision):
+        _check_call("git-review")
+        return True
+
+
+def repositories(file):
+    with open(file) as istr:
+        return [Repository.create(**repo) for repo in yaml.load(istr)["repositories"]]
+
+
+class IntegrationRepository:
+    def __init__(self, repos, top_repository):
+        self._repos = repos
+        self._ignored = set()
+        self.top_repository = top_repository
+
+        if not osp.isdir(self.top_repository):
+            _check_call("git", "init", self.top_repository)
+            with pushd(self.top_repository):
+                with open("test", "w") as ostr:
+                    ostr.write("test")
+                _check_call("git", "add", "test")
+                _check_call("git", "commit", "-n", "-m", "add test")
+        if not osp.isdir(osp.join(self.top_repository, ".git")):
+            raise Exception("Could not find .git directory in " + self.top_repository)
+
+    @property
+    def repos(self):
+        return [repo for repo in self._repos if repo.name not in self._ignored]
+
+    def clean_local_branches(self):
+        with pushd(self.top_repository):
+            for repo in self.repos:
+                repo.clean_local_branches()
+
+    def update(self, revision, dry_run):
+        with pushd(self.top_repository):
+            self._fetch()
+            self._checkout_branch(revision)
+            self._bump(revision)
+            self._test()
+            self._update_gitignore()
+            self._commit(revision)
+            if not dry_run:
+                self._submit(revision)
+
+    def _fetch(self):
+        succeeded = True
+        for repo in self.repos:
+            succeeded &= repo.fetch()
+        if not succeeded:
+            raise Exception("Fetch operation failed")
+
+    def _checkout_branch(self, revision):
+        succeeded = True
+        for repo in self.repos:
+            if repo.bump_branch_exists(revision):
+                repo.log.info(
+                    'ignore because branch "%s" already exists.',
+                    repo._bump_branch(revision),
+                )
+                self._ignored.add(repo.name)
+            else:
+                succeeded &= repo.checkout_branch(revision)
+        if not succeeded:
+            raise Exception("Checkout operation failed")
+
+    def _bump(self, revision):
+        for repo in self.repos:
+            if not repo.bump(revision):
+                repo.log.info("ignore because submodule is up to date")
+                self._ignored.add(repo.name)
+
+    def _test(self):
+        succeeded = True
+        for repo in self.repos:
+            succeeded &= repo.test()
+        if not succeeded:
+            raise Exception("Test operation failed")
+
+    def _update_gitignore(self):
+        succeeded = True
+        for repo in self.repos:
+            succeeded &= repo.update_gitignore()
+        if not succeeded:
+            raise Exception("Gitignore update operation failed")
+
+    def _commit(self, revision):
+        succeeded = True
+        for repo in self.repos:
+            succeeded &= repo.commit(revision)
+        if not succeeded:
+            raise Exception("Commit operation failed")
+
+    def _submit(self, revision):
+        succeeded = True
+        for repo in self.repos:
+            succeeded = repo.submit(revision)
+        if not succeeded:
+            raise Exception("Submit operation failed")
+
+
+def main(**kwargs):
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-c",
+        "--config",
+        metavar="FILE",
+        help="Configuration file [default: %(default)s]",
+        default=DEFAULT_REPOS_YAML,
+    )
+    parser.add_argument(
+        "-r",
+        "--revision",
+        metavar="HASH",
+        default="HEAD",
+        help="Git revision to bump [default: %(default)s]",
+    )
+    parser.add_argument(
+        "--clean", help="remove local git branches", action="store_true"
+    )
+    parser.add_argument(
+        "-d",
+        "--dry-run",
+        action="store_true",
+        help="do not create pull-request or gerrit review",
+    )
+    parser.add_argument(
+        "--repo",
+        help="Collective git repository [default: %(default)s]",
+        default=osp.join(tempfile.gettempdir(), "hpc-cc-projects"),
+    )
+    parser.add_argument(
+        "-p", "--project", nargs="+", help="Filter repositories by CMake project name"
+    )
+    args = parser.parse_args(**kwargs)
+    revision = check_output(["git", "rev-parse", args.revision]).decode("utf-8").strip()
+    repos = repositories(args.config)
+    if args.project:
+        repos = [repo for repo in repos if repo.cmake_project_name in set(args.project)]
+    ir = IntegrationRepository(repos, args.repo)
+    if args.clean:
+        ir.clean_local_branches()
+    else:
+        ir.update(revision, args.dry_run)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    main()

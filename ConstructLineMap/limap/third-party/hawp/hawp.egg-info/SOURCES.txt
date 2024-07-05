@@ -1,0 +1,6 @@
+setup.py
+hawp.egg-info/PKG-INFO
+hawp.egg-info/SOURCES.txt
+hawp.egg-info/dependency_links.txt
+hawp.egg-info/requires.txt
+hawp.egg-info/top_level.txt

@@ -1,0 +1,37 @@
+# BlueBrain HPC Team C++ Code Formatting
+
+This document provides a set of examples to highlight C++
+code formatting conventions adopted by BlueBrain HPC team.
+
+# Similar work
+
+* NSE Team also provides [such document](https://bbpteam.epfl.ch/project/spaces/pages/viewpage.action?spaceKey=BBPNSE&title=Code+style)
+
+# Conventions
+
+{% for conv in conventions %}
+## {{ conv.title}}
+{%- if conv.description %}
+{{ conv.description }}
+{%- endif %}
+
+### Example
+```cpp
+{{ conv.snippet }}
+```
+{%- if conv.clang_format %}
+### Clang-Format configuration
+{%- endif %}
+{%- for key, value in conv.clang_format.items() %}
+* `{{ key }}: {{ value }}`
+{%- endfor %}
+{% endfor %}
+
+# IDE Configuration
+
+## JetBrains CLion
+
+CLion allows you to disable their formatting engine to get
+setting from CLangFormat:
+in `Settings > Editor > Code Style > C/C++`, enable
+`Enable ClangFormat support (only for C/C++/ObjectiveC)` checkbox.

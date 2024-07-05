@@ -1,0 +1,3 @@
+[submodule "DCNv2"]
+	path = tp_lsd/modeling/DCNv2
+	url = git@github.com:jinfagang/DCNv2_latest.git

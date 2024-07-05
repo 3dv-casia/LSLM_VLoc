@@ -1,0 +1,24 @@
+repositories:
+- url: git@github.com:BlueBrain/zee.git
+  features:
+    formatting: true
+    precommit: true
+  cmake_project_name: Zee
+- url: git@github.com:tristan0x/basalt.git
+  features:
+    formatting: true
+    precommit: true
+    static_analysis: true
+  cmake_project_name: Basalt
+  location: cmake/hpc-coding-conventions
+- url: ssh://bbpcode.epfl.ch/incubator/nocmodl
+  features:
+    formatting: true
+    precommit: true
+  location: cmake/hpc-coding-conventions
+  cmake_project_name: NMODL
+- url: ssh://bbpcode.epfl.ch/building/FLATIndex
+  features:
+    formatting: true
+  location: CMake/hpc-coding-conventions
+  cmake_project_name: FLATIndex
