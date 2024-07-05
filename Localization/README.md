@@ -13,6 +13,8 @@ Find the set of database images most similar to the query image, see *./scripts/
 # 3. Start localization
 
 ```
+mkdir build
+cd build
 cmake ...
 make
 ./Line_localization
